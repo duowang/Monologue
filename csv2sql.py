@@ -36,6 +36,6 @@ if __name__ == '__main__':
     #csv2sql("newsmax", "2017-07-10.csv")
     #exit()
     for dirname in ["/2009", "/2010", "/2011", "/2012", "/2013", "/2014", "/2015", "/2016", ""]:
-        for filename in os.listdir("newsmax" + dirname):
+        for filename in sorted(os.listdir("newsmax" + dirname)):
             if filename[-4:] == ".csv":
                 csv2sql("newsmax" + dirname, filename)

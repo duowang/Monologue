@@ -5,12 +5,13 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 COMEDIAN_NAMES = {'Jay': "Jay Leno",
-                  'Seth': 'Seth Meyers',
+                  'Meyers': 'Seth Meyers',
                   'Letterman': 'David Letterman',
                   'Kimmel': 'Jimmy Kimmel',
                   'Conan': 'Conan O\'Brian',
                   'Fallon': 'Jimmy Fallon',
                   'Corden': 'James Corden',
+                  'Colbert': 'Stephen Colbert',
                   'Ferguson': "Craig Ferguson"}
 
 
@@ -32,7 +33,11 @@ def monologue(page):
         if 'jokesHeader' not in comedian.attrs['class']:
             break
         img_name = comedian.find('img').attrs.get('alt')
-        comedian_name = get_name(img_name)
+        # There is an issue with Colbert,use src name to check
+        if img_name == "Late Night With Seth Meyers":
+            comedian_name = get_name(comedian.find('img').attrs.get('src'))
+        else:
+            comedian_name = get_name(img_name)
         monologue = comedian.find_next('p')
         # sometimes there is a <p> tag without closing part
         while monologue.name == 'p' and monologue.find('div', 'jokesHeader') is None:
@@ -52,5 +57,5 @@ def monologue(page):
 
 
 if __name__ == '__main__':
-    for i in range(1839, 3000):
+    for i in range(1756, 3000):
         monologue(i)

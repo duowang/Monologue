@@ -1,6 +1,7 @@
 import csv
 import psycopg2
 import os
+from random import shuffle
 
 
 def csv2sql(dirname, filename):
@@ -12,8 +13,9 @@ def csv2sql(dirname, filename):
         # sql = "insert into monologue_test values ('{author}', '{date}', '{source}', '{content}'"
         sql = "insert into monologue (author, date, source, content) values ($${author}$$, $${date}$$, $${source}$$, $${content}$$)"
         date = filename[:-4]
-        reader = csv.DictReader(csvfile)
-        for row in reader:
+        rows = list(csv.DictReader(csvfile))
+        shuffle(rows)
+        for row in rows:
             insert_sql = sql.format(author=row['name'],
                                     date=date,
                                     source="newsmax",

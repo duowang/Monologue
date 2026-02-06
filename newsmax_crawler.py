@@ -1,9 +1,11 @@
 import argparse
 import csv
+import os
 import re
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -24,6 +26,11 @@ DEFAULT_START_PAGE = 1756
 DEFAULT_BASE_URL = "https://www.newsmax.com/jokes/{page}"
 DEFAULT_ARCHIVE_URL = "https://www.newsmax.com/jokes/archive/"
 DEFAULT_FALLBACK_WINDOW = 1000
+BAD_NAME_TOKENS = {"newsmax", "jokes", "personalities"}
+NAME_ALIASES = {
+    "conan o'brien": "Conan O'Brian",
+    "conan obrien": "Conan O'Brian",
+}
 
 
 def get_name(value):
@@ -37,6 +44,99 @@ def get_name(value):
 
 def normalize_text(value):
     return re.sub(r"\s+", " ", value).strip()
+
+
+def title_case_token(token):
+    if "'" in token:
+        return "'".join(part.capitalize() for part in token.split("'"))
+    return token.capitalize()
+
+
+def apply_alias(name):
+    if not name:
+        return None
+    key = normalize_text(name).lower()
+    return NAME_ALIASES.get(key, name)
+
+
+def clean_candidate_name(value):
+    if not value:
+        return None
+    raw = normalize_text(value)
+    if "://" in raw or raw.startswith("/"):
+        return None
+    if re.search(r"\.(jpg|jpeg|png|gif|webp|svg)\b", raw, flags=re.IGNORECASE):
+        return None
+
+    text = raw
+    text = re.sub(r"[^A-Za-z.' -]", " ", text)
+    text = normalize_text(text)
+    if not text:
+        return None
+    if any(token in text.lower() for token in BAD_NAME_TOKENS):
+        return None
+    if any(char.isdigit() for char in text):
+        return None
+
+    words = [w for w in re.split(r"\s+", text) if w]
+    if len(words) < 2 or len(words) > 5:
+        return None
+
+    words = [title_case_token(w.strip(".'-")) for w in words if w.strip(".'-")]
+    cleaned = normalize_text(" ".join(words))
+    if len(cleaned) < 3:
+        return None
+    return apply_alias(cleaned)
+
+
+def split_camel_case(value):
+    if not value:
+        return ""
+    return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", value)
+
+
+def infer_name_from_alt(alt):
+    text = normalize_text(alt)
+    if not text:
+        return None
+
+    patterns = [
+        r"\bwith\s+([A-Za-z.'\- ]+)$",
+        r"\bstarring(?:\s+with)?\s+([A-Za-z.'\- ]+)$",
+        r"\bhosted by\s+([A-Za-z.'\- ]+)$",
+        r"\bfeaturing\s+([A-Za-z.'\- ]+)$",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            candidate = clean_candidate_name(match.group(1))
+            if candidate:
+                return candidate
+
+    candidate = clean_candidate_name(text)
+    if candidate:
+        return candidate
+    return None
+
+
+def infer_name_from_src(src):
+    if not src:
+        return None
+    path = urlparse(src).path or src
+    filename = os.path.basename(unquote(path))
+    stem, _ = os.path.splitext(filename)
+    if not stem:
+        return None
+
+    stem = re.sub(r"(?i)^newsmax_jokes_personalities_", "", stem)
+    stem = re.sub(r"(?i)_?jokes?$", "", stem)
+    stem = stem.replace("_", " ")
+    stem = split_camel_case(stem)
+
+    candidate = clean_candidate_name(stem)
+    if candidate:
+        return candidate
+    return None
 
 
 def fetch(session, url, timeout, retries):
@@ -92,11 +192,8 @@ def parse_date(soup):
 
 def parse_comedian_name(header_node):
     img = header_node.find("img")
-    if img is None:
-        return None
-
-    alt = img.attrs.get("alt", "")
-    src = img.attrs.get("src", "")
+    alt = img.attrs.get("alt", "") if img is not None else ""
+    src = img.attrs.get("src", "") if img is not None else ""
 
     # Historical quirk: some Seth entries were mislabeled in alt text.
     if alt == "Late Night With Seth Meyers":
@@ -107,13 +204,19 @@ def parse_comedian_name(header_node):
     if resolved_name:
         return resolved_name
 
-    alt = normalize_text(alt)
-    if alt:
-        return alt
+    inferred_name = infer_name_from_alt(alt)
+    if inferred_name:
+        return inferred_name
 
-    src = normalize_text(src)
-    if src:
-        return src
+    inferred_name = infer_name_from_src(src)
+    if inferred_name:
+        return inferred_name
+
+    # Final fallback for future template shifts.
+    header_text = normalize_text(" ".join(header_node.stripped_strings))
+    inferred_name = infer_name_from_alt(header_text)
+    if inferred_name:
+        return inferred_name
     return None
 
 

@@ -213,6 +213,14 @@ def build_parser():
     parser.add_argument("--timeout", type=int, default=20)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument(
+        "--user-agent",
+        default="",
+        help=(
+            "Optional User-Agent header. Leave empty to use the default "
+            "requests User-Agent (often more reliable for Newsmax)."
+        ),
+    )
+    parser.add_argument(
         "--fallback-window",
         type=int,
         default=DEFAULT_FALLBACK_WINDOW,
@@ -233,13 +241,8 @@ def main():
         args.skip_existing = False
 
     session = requests.Session()
-    session.headers.update(
-        {
-            "User-Agent": (
-                "Mozilla/5.0 (compatible; newsmax-monologue-crawler/2.0; +https://www.newsmax.com/)"
-            )
-        }
-    )
+    if args.user_agent:
+        session.headers.update({"User-Agent": args.user_agent})
 
     if args.end_page is None and args.auto_end:
         try:

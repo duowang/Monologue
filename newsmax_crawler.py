@@ -23,6 +23,7 @@ COMEDIAN_NAMES = {
 DEFAULT_START_PAGE = 1756
 DEFAULT_BASE_URL = "https://www.newsmax.com/jokes/{page}"
 DEFAULT_ARCHIVE_URL = "https://www.newsmax.com/jokes/archive/"
+DEFAULT_FALLBACK_WINDOW = 1000
 
 
 def get_name(value):
@@ -211,6 +212,15 @@ def build_parser():
     )
     parser.add_argument("--timeout", type=int, default=20)
     parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument(
+        "--fallback-window",
+        type=int,
+        default=DEFAULT_FALLBACK_WINDOW,
+        help=(
+            "Page window used when --auto-end discovery fails or when "
+            "--end-page is omitted without --auto-end."
+        ),
+    )
     parser.add_argument("--sleep", type=float, default=0.1)
     return parser
 
@@ -232,15 +242,23 @@ def main():
     )
 
     if args.end_page is None and args.auto_end:
-        args.end_page = discover_latest_page(
-            session,
-            archive_url=DEFAULT_ARCHIVE_URL,
-            timeout=args.timeout,
-            retries=args.retries,
-        )
-        print(f"Discovered latest page: {args.end_page}")
+        try:
+            args.end_page = discover_latest_page(
+                session,
+                archive_url=DEFAULT_ARCHIVE_URL,
+                timeout=args.timeout,
+                retries=args.retries,
+            )
+            print(f"Discovered latest page: {args.end_page}")
+        except Exception as exc:  # noqa: BLE001
+            args.end_page = args.start_page + args.fallback_window
+            print(
+                "[warn] auto-end discovery failed "
+                f"(reason={type(exc).__name__}: {exc}); "
+                f"falling back to [{args.start_page}, {args.end_page}]"
+            )
     elif args.end_page is None:
-        args.end_page = args.start_page + 1000
+        args.end_page = args.start_page + args.fallback_window
         print(
             "No --end-page given; defaulting to a bounded window "
             f"[{args.start_page}, {args.end_page}]"

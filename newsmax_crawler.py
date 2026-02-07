@@ -313,6 +313,15 @@ def build_parser():
         default=50,
         help="Stop after this many consecutive missing/invalid pages.",
     )
+    parser.add_argument(
+        "--stop-after-same-date",
+        type=int,
+        default=20,
+        help=(
+            "Stop after this many consecutive pages resolving to the same date. "
+            "Protects against archive/latest-page redirects."
+        ),
+    )
     parser.add_argument("--timeout", type=int, default=20)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument(
@@ -374,6 +383,8 @@ def main():
         raise ValueError("--end-page must be >= --start-page")
 
     consecutive_misses = 0
+    consecutive_same_date = 0
+    previous_date = None
     saved = 0
     skipped = 0
     missing = 0
@@ -399,6 +410,8 @@ def main():
             consecutive_misses += 1
             missing += 1
             print(f"[missing] page={page}")
+            previous_date = None
+            consecutive_same_date = 0
 
         if consecutive_misses >= args.stop_after_miss:
             print(
@@ -406,6 +419,21 @@ def main():
                 f"(threshold={args.stop_after_miss})."
             )
             break
+
+        if status in {"saved", "skipped"}:
+            if date_value == previous_date:
+                consecutive_same_date += 1
+            else:
+                consecutive_same_date = 1
+                previous_date = date_value
+
+            if consecutive_same_date >= args.stop_after_same_date:
+                print(
+                    f"Stopping after {consecutive_same_date} consecutive pages "
+                    f"with same date {date_value} "
+                    f"(threshold={args.stop_after_same_date})."
+                )
+                break
 
         if args.sleep > 0:
             time.sleep(args.sleep)

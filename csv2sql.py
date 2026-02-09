@@ -42,7 +42,13 @@ if __name__ == '__main__':
 
     # csv2sql("newsmax", "2017-07-10.csv", connect_str)
     # raise SystemExit(0)
-    for dirname in ["/2009", "/2010", "/2011", "/2012", "/2013", "/2014", "/2015", "/2016", ""]:
-        for filename in sorted(os.listdir("newsmax" + dirname)):
-            if filename[-4:] == ".csv":
-                csv2sql("newsmax" + dirname, filename, connect_str)
+    year_dirs = []
+    for entry in sorted(os.listdir("newsmax")):
+        path = os.path.join("newsmax", entry)
+        if os.path.isdir(path) and entry.isdigit() and len(entry) == 4:
+            year_dirs.append(path)
+
+    for dirname in year_dirs + ["newsmax"]:
+        for filename in sorted(os.listdir(dirname)):
+            if filename.endswith(".csv"):
+                csv2sql(dirname, filename, connect_str)

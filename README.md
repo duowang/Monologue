@@ -3,7 +3,9 @@
 ## Repository structure
 
 - `newsmax_crawler.py`: crawls Newsmax "Best of Late Nite Jokes" pages and writes date-based CSV files.
+- `latenighter_crawler.py`: crawls LateNighter "Monologues Round-Up" posts and writes date-based CSV files.
 - `newsmax/`: raw CSV files (`YYYY-MM-DD.csv`) grouped by year folders for 2009-2016 and root-level files for 2017.
+- `latenighter/`: raw CSV files (`YYYY-MM-DD.csv`) from LateNighter (current coverage starts in 2024).
 - `csv2sql.py`: imports CSV rows into Postgres.
 - `schema.sql`: table definitions.
 
@@ -32,3 +34,13 @@ Notes:
 - `--skip-existing` prevents rewriting dates that are already present.
 - `--stop-after-same-date` prevents endless loops when many page ids resolve to the same last date.
 - If Newsmax has stopped publishing this content, the crawler exits after consecutive misses.
+
+## Post-2018 continuation
+
+Newsmax `jokes` pages currently top out at `2018-09-28` content. To continue collecting newer monologue jokes:
+
+```bash
+python3 latenighter_crawler.py \
+  --from-date 2018-09-29 \
+  --skip-existing
+```

@@ -4,7 +4,7 @@ from random import shuffle
 import psycopg2
 
 
-def csv2sql(dirname, filename, connect_str):
+def csv2sql(dirname, filename, source_name, connect_str):
     conn = psycopg2.connect(connect_str)
     cur = conn.cursor()
     with open(os.path.join(dirname, filename), "r", encoding="utf-8", newline="") as csvfile:
@@ -15,7 +15,7 @@ def csv2sql(dirname, filename, connect_str):
         for row in rows:
             insert_sql = sql.format(author=row['name'],
                                     date=date,
-                                    source="newsmax",
+                                    source=source_name,
                                     content=row['monologue'].strip())
             try:
                 cur.execute(insert_sql)
@@ -42,13 +42,21 @@ if __name__ == '__main__':
 
     # csv2sql("newsmax", "2017-07-10.csv", connect_str)
     # raise SystemExit(0)
-    year_dirs = []
-    for entry in sorted(os.listdir("newsmax")):
-        path = os.path.join("newsmax", entry)
-        if os.path.isdir(path) and entry.isdigit() and len(entry) == 4:
-            year_dirs.append(path)
+    source_dirs = {}
 
-    for dirname in year_dirs + ["newsmax"]:
-        for filename in sorted(os.listdir(dirname)):
-            if filename.endswith(".csv"):
-                csv2sql(dirname, filename, connect_str)
+    if os.path.isdir("newsmax"):
+        year_dirs = []
+        for entry in sorted(os.listdir("newsmax")):
+            path = os.path.join("newsmax", entry)
+            if os.path.isdir(path) and entry.isdigit() and len(entry) == 4:
+                year_dirs.append(path)
+        source_dirs["newsmax"] = year_dirs + ["newsmax"]
+
+    if os.path.isdir("latenighter"):
+        source_dirs["latenighter"] = ["latenighter"]
+
+    for source_name, directories in source_dirs.items():
+        for dirname in directories:
+            for filename in sorted(os.listdir(dirname)):
+                if filename.endswith(".csv"):
+                    csv2sql(dirname, filename, source_name, connect_str)

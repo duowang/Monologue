@@ -8,23 +8,31 @@ def csv2sql(dirname, filename, source_name, connect_str):
     conn = psycopg2.connect(connect_str)
     cur = conn.cursor()
     with open(os.path.join(dirname, filename), "r", encoding="utf-8", newline="") as csvfile:
-        sql = "insert into monologue (author, date, source, content) values ($${author}$$, $${date}$$, $${source}$$, $${content}$$)"
+        sql = (
+            "insert into monologue (author, date, source, content) "
+            "values (%s, %s, %s, %s)"
+        )
         date = filename[:-4]
         rows = list(csv.DictReader(csvfile))
         shuffle(rows)
         for row in rows:
-            insert_sql = sql.format(author=row['name'],
-                                    date=date,
-                                    source=source_name,
-                                    content=row['monologue'].strip())
             try:
-                cur.execute(insert_sql)
+                cur.execute(
+                    sql,
+                    (
+                        row["name"],
+                        date,
+                        source_name,
+                        row["monologue"].strip(),
+                    ),
+                )
             except psycopg2.IntegrityError as e:
+                conn.rollback()
                 print(dirname, filename, "existed")
                 print(row['name'], row['monologue'])
-                conn.commit()
                 continue
             except Exception:
+                conn.rollback()
                 print(dirname, filename)
                 raise
             conn.commit()
@@ -54,6 +62,9 @@ if __name__ == '__main__':
 
     if os.path.isdir("latenighter"):
         source_dirs["latenighter"] = ["latenighter"]
+
+    if os.path.isdir("scraps"):
+        source_dirs["scraps"] = ["scraps"]
 
     for source_name, directories in source_dirs.items():
         for dirname in directories:

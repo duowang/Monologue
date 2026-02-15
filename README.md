@@ -1,25 +1,27 @@
-# Monologue Dataset (Newsmax)
+# Monologue Dataset
+
+This repo stores late-night monologue/joke text in date-based CSV files from multiple sources.
 
 ## Repository structure
 
-- `newsmax_crawler.py`: crawls Newsmax "Best of Late Nite Jokes" pages and writes date-based CSV files.
-- `latenighter_crawler.py`: crawls LateNighter "Monologues Round-Up" posts and writes date-based CSV files.
-- `scraps_crawler.py`: crawls transcript posts from scrapsfromtheloft.com and writes date-based CSV files.
-- `newsmax/`: raw CSV files (`YYYY-MM-DD.csv`) grouped by year folders for 2009-2016 and root-level files for 2017.
-- `latenighter/`: raw CSV files (`YYYY-MM-DD.csv`) from LateNighter (current coverage starts in 2024).
-- `scraps/`: raw CSV files (`YYYY-MM-DD.csv`) from scrapsfromtheloft.com transcript pages.
-- `csv2sql.py`: imports CSV rows into Postgres.
+- `newsmax_crawler.py`: crawls Newsmax "Best of Late Nite Jokes" pages.
+- `latenighter_crawler.py`: crawls LateNighter "Monologues Round-Up" pages.
+- `scraps_crawler.py`: crawls selected transcript posts from scrapsfromtheloft.com.
+- `newsmax/`: Newsmax CSV files (`YYYY-MM-DD.csv`, with older years in subfolders).
+- `latenighter/`: LateNighter CSV files (`YYYY-MM-DD.csv`).
+- `scraps/`: Scraps transcript CSV files (`YYYY-MM-DD.csv`).
+- `csv2sql.py`: imports all available source CSV files into Postgres.
 - `schema.sql`: table definitions.
 
-## Crawl continuation
-
-Install dependencies:
+## Install
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-Continue crawling with auto-detected upper bound:
+## Crawl commands
+
+### Newsmax
 
 ```bash
 python3 newsmax_crawler.py \
@@ -32,14 +34,11 @@ python3 newsmax_crawler.py \
 
 Notes:
 
-- `--auto-end` tries to discover the latest available jokes page from `/jokes/archive/`.
-- `--skip-existing` prevents rewriting dates that are already present.
-- `--stop-after-same-date` prevents endless loops when many page ids resolve to the same last date.
-- If Newsmax has stopped publishing this content, the crawler exits after consecutive misses.
+- Newsmax content currently plateaus at `2018-09-28`.
+- `--auto-end` attempts latest-page discovery from `/jokes/archive/`.
+- Use lower timeout/retry values if you are hitting frequent `ReadTimeout` errors.
 
-## Post-2018 continuation
-
-Newsmax `jokes` pages currently top out at `2018-09-28` content. To continue collecting newer monologue jokes:
+### LateNighter
 
 ```bash
 python3 latenighter_crawler.py \
@@ -47,7 +46,7 @@ python3 latenighter_crawler.py \
   --skip-existing
 ```
 
-Alternative source crawl (transcript-heavy archive, broad 2017+ coverage):
+### Scraps (transcript source)
 
 ```bash
 python3 scraps_crawler.py \
@@ -55,7 +54,7 @@ python3 scraps_crawler.py \
   --skip-existing
 ```
 
-If filters change and you need to clean stale CSVs:
+If filtering rules are updated and you need to remove stale files:
 
 ```bash
 python3 scraps_crawler.py \
@@ -63,3 +62,48 @@ python3 scraps_crawler.py \
   --overwrite-existing \
   --prune-stale
 ```
+
+## Export all CSV rows to one text file
+
+The following command creates a tab-separated text file:
+
+```bash
+python3 - <<'PY'
+import csv
+from pathlib import Path
+
+out_path = Path("monologues_all_sources.txt")
+roots = [Path("newsmax"), Path("latenighter"), Path("scraps")]
+
+files = []
+for root in roots:
+    if root.exists():
+        files.extend(sorted(root.rglob("*.csv")))
+
+with out_path.open("w", encoding="utf-8", newline="") as out:
+    out.write("source\tdate\tname\tmonologue\n")
+    for csv_path in sorted(files):
+        source = csv_path.parts[0]
+        date = csv_path.stem
+        with csv_path.open("r", encoding="utf-8", newline="") as f:
+            for row in csv.DictReader(f):
+                name = (row.get("name") or "").strip().replace("\t", " ")
+                text = (row.get("monologue") or "").strip().replace("\t", " ")
+                text = " ".join(text.split())
+                if name and text:
+                    out.write(f"{source}\t{date}\t{name}\t{text}\n")
+PY
+```
+
+## Import to Postgres
+
+```bash
+python3 csv2sql.py
+```
+
+Environment variables used by `csv2sql.py`:
+
+- `MONOLOGUE_DB_USER`
+- `MONOLOGUE_DB_PASSWORD` (defaults to user value)
+- `MONOLOGUE_DB_NAME` (defaults to user value)
+- `MONOLOGUE_DB_HOST` (defaults to `localhost`)

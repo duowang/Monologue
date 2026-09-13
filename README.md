@@ -88,7 +88,7 @@ df.groupby("name").size().sort_values(ascending=False).head()
 
 The complete text has the same layout as `sample/` plus the flattened TSV. It is available
 for research and educational use: contact me. The joke text belongs to the shows and writers
-who created it, which is why it is not published here in full.
+who created it.
 
 ### Sources, and how they differ
 

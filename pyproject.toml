@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "monologue"
+version = "1.0.0"
+description = "A dataset of late-night TV monologue jokes (2009-present) and the crawlers that build it."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Duo Wang" }]
+requires-python = ">=3.9"
+keywords = ["dataset", "comedy", "late-night", "nlp", "humor", "web-scraping"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Text Processing :: Linguistic",
+]
+dependencies = [
+    "beautifulsoup4>=4.12,<5",
+    "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+db = ["psycopg2-binary>=2.9,<3"]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+monologue = "monologue.cli:main"
+
+[project.urls]
+Repository = "https://github.com/duowang/Monologue"
+
+[tool.setuptools]
+packages = ["monologue"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

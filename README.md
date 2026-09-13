@@ -1,109 +1,165 @@
-# Monologue Dataset
+# Monologue
 
-This repo stores late-night monologue/joke text in date-based CSV files from multiple sources.
+**47,000+ late-night TV monologue jokes, 2009 to today, as plain CSV.**
 
-## Repository structure
+A small, hand-curated text dataset built from three public sources, plus the Python crawlers
+that keep it growing. Useful for humor research, NLP experiments, topic and sentiment analysis
+of political comedy, or just reading a decade of jokes.
 
-- `newsmax_crawler.py`: crawls Newsmax "Best of Late Nite Jokes" pages.
-- `latenighter_crawler.py`: crawls LateNighter "Monologues Round-Up" pages.
-- `scraps_crawler.py`: crawls selected transcript posts from scrapsfromtheloft.com.
-- `newsmax/`: Newsmax CSV files (`YYYY-MM-DD.csv`, with older years in subfolders).
-- `latenighter/`: LateNighter CSV files (`YYYY-MM-DD.csv`).
-- `scraps/`: Scraps transcript CSV files (`YYYY-MM-DD.csv`).
-- `csv2sql.py`: imports all available source CSV files into Postgres.
-- `schema.sql`: table definitions.
+[![CI](https://github.com/duowang/Monologue/actions/workflows/ci.yml/badge.svg)](https://github.com/duowang/Monologue/actions/workflows/ci.yml)
+![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+[![License: MIT](https://img.shields.io/badge/code-MIT-green.svg)](LICENSE)
+
+```text
+source       date        name             monologue
+newsmax      2017-01-03  James Corden     I'm no expert, but I'm pretty sure you can't stop a nuclear missile by tweeting at it.
+latenighter  2024-02-27  Jimmy Fallon     Trump actually had two versions of his speech. A victory speech in case he won. And a victory speech in case he lost.
+```
+
+## The data
+
+| Source | Days | Rows | From | To |
+|---|---:|---:|---|---|
+| newsmax | 1,966 | 26,230 | 2009-06-02 | 2018-09-28 |
+| latenighter | 224 | 6,941 | 2024-02-27 | 2026-01-27 |
+| scraps | 181 | 13,995 | 2017-06-26 | 2025-11-17 |
+| **Total** | **2,371** | **47,166** | | |
+
+| Host | Rows |
+|---|---:|
+| John Oliver | 12,287 |
+| Jimmy Fallon | 6,587 |
+| Jimmy Kimmel | 5,560 |
+| Conan O'Brien | 4,712 |
+| Seth Meyers | 3,665 |
+| Jay Leno | 3,296 |
+| Craig Ferguson | 3,293 |
+| Stephen Colbert | 2,432 |
+| David Letterman | 1,385 |
+| James Corden | 1,020 |
+| Jon Stewart | 356 |
+| Daily Show | 326 |
+
+Regenerate these tables any time with `monologue stats`.
+
+### Layout
+
+```text
+data/
+  newsmax/       one CSV per broadcast day; 2009-2016 are grouped in year folders
+  latenighter/   one CSV per round-up post
+  scraps/        one CSV per transcript day
+  monologues.tsv everything flattened into one tab-separated file
+```
+
+Every day file is named `YYYY-MM-DD.csv` and has the same two columns:
+
+| Column | Meaning |
+|---|---|
+| `name` | Host or speaker, normalized to one spelling per person |
+| `monologue` | One joke or one transcript paragraph |
+
+The flattened file [`data/monologues.tsv`](data/monologues.tsv) adds `source` and `date` columns
+in front, so you can load the whole dataset with one call:
+
+```python
+import pandas as pd
+
+df = pd.read_csv("data/monologues.tsv", sep="\t")
+df.groupby("name").size().sort_values(ascending=False).head()
+```
+
+### Sources, and how they differ
+
+| Source | What it is | Character |
+|---|---|---|
+| **newsmax** | Newsmax's daily "Best of Late Nite Jokes" column | Short, editor-selected one-liners. The column ended on 2018-09-28. |
+| **latenighter** | LateNighter's "Monologues Round-Up" posts | Short, editor-selected jokes. Attribution is inferred from headings and quote tails, so a few rows are `Unknown`. |
+| **scraps** | Full episode transcripts from Scraps from the Loft | Complete monologue and desk-segment transcripts, one paragraph per row. Much longer, and includes labeled speakers other than the host (announcers, guests, clips). |
+
+If you want only curated jokes, use `newsmax` and `latenighter`. If you want long-form text,
+use `scraps`. The two kinds are not directly comparable in length or density.
 
 ## Install
 
 ```bash
-python3 -m pip install -r requirements.txt
+python -m pip install -e ".[dev]"
 ```
 
-## Crawl commands
+This installs a `monologue` command. Add the `db` extra if you want the Postgres loader.
 
-### Newsmax
+## Usage
 
 ```bash
-python3 newsmax_crawler.py \
-  --start-page 1840 \
-  --auto-end \
-  --stop-after-same-date 8 \
-  --stop-after-miss 100 \
-  --skip-existing
+monologue stats                              # Markdown tables like the ones above
+monologue stats --json                       # machine-readable, with per-source host counts
+monologue export -o data/monologues.tsv      # rebuild the flattened file
+monologue export --format jsonl --source scraps -o scraps.jsonl
 ```
 
-Notes:
+### Updating the dataset
 
-- Newsmax content currently plateaus at `2018-09-28`.
-- `--auto-end` attempts latest-page discovery from `/jokes/archive/`.
-- Use lower timeout/retry values if you are hitting frequent `ReadTimeout` errors.
-
-### LateNighter
+Each crawler skips days that already exist, so re-running is cheap and safe.
 
 ```bash
-python3 latenighter_crawler.py \
-  --from-date 2018-09-29 \
-  --skip-existing
+monologue crawl latenighter --from-date 2024-01-01
+monologue crawl scraps --from-date 2017-01-01
+monologue crawl newsmax --start-page 1840 --auto-end --stop-after-same-date 8   # archive only; no new content since 2018
 ```
 
-### Scraps (transcript source)
+Pass `--overwrite-existing` to rebuild days after changing a parser, and
+`monologue crawl scraps --prune-stale` to delete day files a stricter filter no longer produces.
+
+### Loading into Postgres
 
 ```bash
-python3 scraps_crawler.py \
-  --from-date 2017-01-01 \
-  --skip-existing
+psql "$DATABASE_URL" -f schema.sql
+MONOLOGUE_DB_USER=me MONOLOGUE_DB_NAME=monologue monologue import-db
 ```
 
-If filtering rules are updated and you need to remove stale files:
+Rows are inserted with `ON CONFLICT DO NOTHING` on the joke text, so re-importing never
+creates duplicates. Set `MONOLOGUE_DB_PASSWORD` and `MONOLOGUE_DB_HOST` as needed, or pass
+`--dsn` with a full libpq connection string.
+
+## Development
 
 ```bash
-python3 scraps_crawler.py \
-  --from-date 2017-01-01 \
-  --overwrite-existing \
-  --prune-stale
+ruff check . && ruff format --check .
+pytest
 ```
 
-## Export all CSV rows to one text file
+The test suite covers the three parsers with small HTML fixtures, the export and stats
+commands, and an integrity pass over every committed CSV (date-named, standard header,
+non-empty). CI runs the same checks on Python 3.9 and 3.12.
 
-The following command creates a tab-separated text file:
-
-```bash
-python3 - <<'PY'
-import csv
-from pathlib import Path
-
-out_path = Path("monologues_all_sources.txt")
-roots = [Path("newsmax"), Path("latenighter"), Path("scraps")]
-
-files = []
-for root in roots:
-    if root.exists():
-        files.extend(sorted(root.rglob("*.csv")))
-
-with out_path.open("w", encoding="utf-8", newline="") as out:
-    out.write("source\tdate\tname\tmonologue\n")
-    for csv_path in sorted(files):
-        source = csv_path.parts[0]
-        date = csv_path.stem
-        with csv_path.open("r", encoding="utf-8", newline="") as f:
-            for row in csv.DictReader(f):
-                name = (row.get("name") or "").strip().replace("\t", " ")
-                text = (row.get("monologue") or "").strip().replace("\t", " ")
-                text = " ".join(text.split())
-                if name and text:
-                    out.write(f"{source}\t{date}\t{name}\t{text}\n")
-PY
+```text
+monologue/
+  common.py       text normalization, canonical host names, CSV I/O, HTTP retries
+  newsmax.py      page-number crawler and HTML parser
+  latenighter.py  WordPress API crawler and round-up parser
+  scraps.py       WordPress API crawler and transcript parser
+  export.py       TSV / JSONL flattening
+  stats.py        dataset summary
+  db.py           Postgres loader
+  cli.py          argparse entry point
 ```
 
-## Import to Postgres
+## Attribution and licensing
 
-```bash
-python3 csv2sql.py
+The code in this repository is released under the [MIT License](LICENSE).
+
+The joke text belongs to the shows and writers who created it and was collected from
+[Newsmax](https://www.newsmax.com/jokes/), [LateNighter](https://latenighter.com/), and
+[Scraps from the Loft](https://scrapsfromtheloft.com/). It is provided here for research and
+educational use. Please credit the original hosts and sources if you build on it.
+
+## Citation
+
+```bibtex
+@misc{wang_monologue,
+  author = {Duo Wang},
+  title  = {Monologue: a dataset of late-night TV monologue jokes},
+  year   = {2026},
+  url    = {https://github.com/duowang/Monologue}
+}
 ```
-
-Environment variables used by `csv2sql.py`:
-
-- `MONOLOGUE_DB_USER`
-- `MONOLOGUE_DB_PASSWORD` (defaults to user value)
-- `MONOLOGUE_DB_NAME` (defaults to user value)
-- `MONOLOGUE_DB_HOST` (defaults to `localhost`)

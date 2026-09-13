@@ -45,9 +45,9 @@ def test_latenighter_parse_post():
 
 
 def test_latenighter_paragraph_fallback():
-    html = "<p>Kimmel opened with “a joke that is long enough to be extracted from prose” tonight.</p>"
+    html = "<p>Kimmel opened with “A joke that is long enough to be extracted from prose.” tonight.</p>"
     assert latenighter.parse_post(html) == {
-        "Jimmy Kimmel": ["a joke that is long enough to be extracted from prose"]
+        "Jimmy Kimmel": ["A joke that is long enough to be extracted from prose."]
     }
 
 
@@ -72,3 +72,49 @@ def test_scraps_parse_post():
 )
 def test_scraps_is_relevant_post(title, link, keywords, expected):
     assert scraps.is_relevant_post(title, link, keywords) is expected
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("JOHN", "John Oliver"),
+        ("Oliver", "John Oliver"),
+        ("Announcer", "Announcer"),
+        ("Alex Jones", "Alex Jones"),
+        ("Bill de Blasio", "Bill De Blasio"),
+        ("Fun fact", None),
+        ("The point is", None),
+        ("And look", None),
+        ("Look", None),
+        ("Main Segment Of The Night", None),
+    ],
+)
+def test_scraps_canonical_speaker(label, expected):
+    assert scraps.canonical_speaker(label) == expected
+
+
+def test_scraps_phrase_labels_stay_with_the_host():
+    html = (
+        "<p>Main Segment: Something about the episode structure goes here.</p>"
+        "<p>Fun fact: this sentence is prose spoken by the host and not a quote from Fun.</p>"
+        "<p>Announcer: And now, a word from our sponsors, who are wonderful people.</p>"
+    )
+    quotes = scraps.parse_post(html, "John Oliver")
+    assert quotes == {
+        "John Oliver": ["Fun fact: this sentence is prose spoken by the host and not a quote from Fun."],
+        "Announcer": ["And now, a word from our sponsors, who are wonderful people."],
+    }
+
+
+def test_latenighter_prose_article_carries_host_context_and_drops_fragments():
+    html = (
+        "<p>On Jimmy Kimmel Live!, Kimmel came out swinging.</p>"
+        "<p>Kimmel argued that the public doesn’t know more “because the people who work for him hid it.”</p>"
+        "<p>“Why are they being allowed to hide this stuff?” he asked.</p>"
+        "<p>Over on The Late Show with Stephen Colbert, the approach was different.</p>"
+        "<p>“That the files are missing should be the biggest story in the world,” Colbert said.</p>"
+    )
+    assert latenighter.parse_post(html) == {
+        "Jimmy Kimmel": ["Why are they being allowed to hide this stuff?"],
+        "Stephen Colbert": ["That the files are missing should be the biggest story in the world,"],
+    }

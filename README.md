@@ -137,14 +137,23 @@ monologue --data-dir sample stats
 Each crawler skips days that already exist, so re-running is cheap and safe.
 
 ```bash
-monologue crawl latenighter --from-date 2024-01-01
-monologue crawl scraps --from-date 2017-01-01
-monologue crawl newsmax --start-page 1840 --auto-end --stop-after-same-date 8   # archive only; no new content since 2018
+monologue crawl latenighter --from-date 2026-01-01
+monologue crawl scraps --from-date 2026-01-01
+monologue crawl newsmax --start-page 1840 --end-page 2100    # archive only; nothing new since 2018
 monologue sample
 ```
 
-Pass `--overwrite-existing` to rebuild days after changing a parser, and
-`monologue crawl scraps --prune-stale` to delete day files a stricter filter no longer produces.
+The two WordPress sources are filtered by date on the server, so a narrow `--from-date` is a
+fast incremental update. Newsmax is walked by page number and stops on its own once pages
+start repeating the final day.
+
+Useful flags:
+
+- `--overwrite-existing` rebuilds days after a parser change.
+- `monologue crawl scraps --prune-stale` deletes day files a stricter filter no longer produces.
+- `--user-agent` overrides the default `monologue-crawler/<version>` header.
+- `-v` before the command shows every fetch; `-q` shows only warnings.
+
 After a crawl, commit the refreshed `sample/` here.
 
 ### Loading into Postgres
@@ -165,14 +174,17 @@ ruff check . && ruff format --check .
 pytest
 ```
 
-The test suite covers the three parsers with small HTML fixtures, the export, stats, and
+The test suite covers the three parsers with small HTML fixtures, the crawl loops against a
+fake HTTP session (retries, paging, skipping, pruning, stop conditions), the export, stats, and
 sample commands, and an integrity pass over `sample/` (date-named, standard header, non-empty,
 within the row cap). The same pass runs over the full dataset when `data/` is present.
 CI runs everything on Python 3.9 and 3.12.
 
 ```text
 monologue/
-  common.py       text normalization, canonical host names, CSV I/O, HTTP retries
+  common.py       text normalization, canonical host names, dates, CSV I/O
+  http.py         session with User-Agent, retries with backoff, WordPress paging
+  crawl.py        date windows, the day-file store, run summaries
   newsmax.py      page-number crawler and HTML parser
   latenighter.py  WordPress API crawler and round-up parser
   scraps.py       WordPress API crawler and transcript parser

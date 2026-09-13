@@ -1,28 +1,19 @@
-"""Shared helpers: text normalization, author names, CSV I/O, and HTTP retries."""
+"""Shared helpers: text normalization, author names, dates, and CSV I/O."""
 
 from __future__ import annotations
 
 import csv
 import os
 import re
-import time
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-import requests
-
 CSV_FIELDS = ("name", "monologue")
 SOURCES = ("newsmax", "latenighter", "scraps")
 DATA_DIR_ENV = "MONOLOGUE_DATA_DIR"
 DEFAULT_DATA_DIR = Path("data")
-
-
-def default_data_dir() -> Path:
-    """The data directory: $MONOLOGUE_DATA_DIR if set, else ./data."""
-    return Path(os.environ.get(DATA_DIR_ENV) or DEFAULT_DATA_DIR)
-
 
 # Lower-cased spellings that appear in source pages, mapped to one canonical name.
 CANONICAL_AUTHORS: dict[str, str] = {
@@ -55,6 +46,11 @@ CANONICAL_AUTHORS: dict[str, str] = {
     "taylor tomlinson": "Taylor Tomlinson",
     "trevor noah": "Trevor Noah",
 }
+
+
+def default_data_dir() -> Path:
+    """The data directory: $MONOLOGUE_DATA_DIR if set, else ./data."""
+    return Path(os.environ.get(DATA_DIR_ENV) or DEFAULT_DATA_DIR)
 
 
 def normalize_text(value: str | None) -> str:
@@ -133,76 +129,3 @@ def iter_rows(data_dir: Path, sources: Iterable[str] = SOURCES) -> Iterator[Row]
             text = normalize_text(raw.get("monologue"))
             if author and text:
                 yield Row(source=source, date=date_value, author=author, text=text)
-
-
-def get_with_retry(
-    session: requests.Session,
-    url: str,
-    *,
-    params: Mapping[str, object] | None = None,
-    timeout: float = 30,
-    retries: int = 3,
-    backoff: float = 0.8,
-) -> requests.Response | None:
-    """GET with simple retries. Returns None on 404; raises the last error otherwise."""
-    last_error: Exception | None = None
-    for attempt in range(retries):
-        try:
-            response = session.get(url, params=params, timeout=timeout)
-            if response.status_code == 404:
-                return None
-            if response.status_code == 429:
-                time.sleep(backoff * (attempt + 1))
-                continue
-            response.raise_for_status()
-            return response
-        except requests.RequestException as exc:
-            last_error = exc
-            time.sleep(backoff)
-    if last_error is None:
-        raise RuntimeError(f"Gave up after {retries} attempts: {url}")
-    raise last_error
-
-
-def fetch_wp_posts(
-    session: requests.Session, api_url: str, tag_id: int, *, per_page: int = 100
-) -> Iterator[dict]:
-    """Page through a WordPress REST API posts endpoint filtered by tag."""
-    page = 1
-    while True:
-        params = {
-            "tags": tag_id,
-            "per_page": per_page,
-            "page": page,
-            "_fields": "id,date,link,title,content",
-        }
-        response = get_with_retry(session, api_url, params=params, timeout=35, retries=4)
-        if response is None:
-            break
-        posts = response.json()
-        if not posts:
-            break
-        yield from posts
-        total_pages = int(response.headers.get("X-WP-TotalPages", "1"))
-        if page >= total_pages:
-            break
-        page += 1
-
-
-def add_date_window_args(parser, default_from: str) -> None:
-    parser.add_argument("--from-date", default=default_from, help="Earliest date to keep (YYYY-MM-DD).")
-    parser.add_argument("--to-date", default=None, help="Latest date to keep (default: today).")
-
-
-def add_overwrite_args(parser) -> None:
-    parser.add_argument(
-        "--overwrite-existing",
-        action="store_true",
-        help="Rewrite day files that already exist (default: skip them).",
-    )
-
-
-def resolve_window(args) -> tuple[date, date]:
-    from_date = parse_iso_date(args.from_date)
-    to_date = parse_iso_date(args.to_date) if args.to_date else today_utc()
-    return from_date, to_date

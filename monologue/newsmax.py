@@ -1,11 +1,14 @@
 """Crawler for Newsmax "Best of Late Nite Jokes" pages (newsmax.com/jokes/<page>).
 
-Newsmax stopped publishing this feature on 2018-09-28, so this crawler is mainly
-kept for reproducibility. Pages are numbered sequentially; each page is one day.
+Pages are numbered sequentially and each page is one broadcast day. Newsmax stopped
+publishing the column on 2018-09-28; every page number past the end now serves that
+final day, which is why the crawler stops after a run of identical dates.
 """
 
 from __future__ import annotations
 
+import argparse
+import logging
 import os
 import re
 import time
@@ -16,19 +19,17 @@ from urllib.parse import unquote, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-from monologue.common import (
-    add_overwrite_args,
-    canonical_author,
-    get_with_retry,
-    normalize_text,
-    write_day_csv,
-)
+from monologue.common import canonical_author, normalize_text
+from monologue.crawl import CrawlSummary, DayStore, add_crawl_args
+from monologue.http import get, make_session
+
+log = logging.getLogger(__name__)
 
 SOURCE = "newsmax"
-BASE_URL = "https://www.newsmax.com/jokes/{page}"
-ARCHIVE_URL = "https://www.newsmax.com/jokes/archive/"
+PAGE_URL = "https://www.newsmax.com/jokes/{page}/"
 DEFAULT_START_PAGE = 1756
-DEFAULT_FALLBACK_WINDOW = 1000
+DEFAULT_PAGE_WINDOW = 1000
+MIN_JOKE_CHARS = 11
 
 # Regex fragments found in the host image's alt/src attributes, mapped to canonical names.
 HOST_PATTERNS = {
@@ -42,7 +43,13 @@ HOST_PATTERNS = {
     "Colbert": "Stephen Colbert",
     "Ferguson": "Craig Ferguson",
 }
-BAD_NAME_TOKENS = {"newsmax", "jokes", "personalities"}
+BAD_NAME_TOKENS = ("newsmax", "jokes", "personalities")
+NAME_IN_ALT_PATTERNS = (
+    r"\bwith\s+([A-Za-z.'\- ]+)$",
+    r"\bstarring(?:\s+with)?\s+([A-Za-z.'\- ]+)$",
+    r"\bhosted by\s+([A-Za-z.'\- ]+)$",
+    r"\bfeaturing\s+([A-Za-z.'\- ]+)$",
+)
 
 
 def match_known_host(value: str | None) -> str | None:
@@ -55,9 +62,7 @@ def match_known_host(value: str | None) -> str | None:
 
 
 def _title_case(token: str) -> str:
-    if "'" in token:
-        return "'".join(part.capitalize() for part in token.split("'"))
-    return token.capitalize()
+    return "'".join(part.capitalize() for part in token.split("'"))
 
 
 def clean_candidate_name(value: str | None) -> str | None:
@@ -72,26 +77,18 @@ def clean_candidate_name(value: str | None) -> str | None:
     text = normalize_text(re.sub(r"[^A-Za-z.' -]", " ", raw))
     if not text or any(token in text.lower() for token in BAD_NAME_TOKENS):
         return None
-    words = [w.strip(".'-") for w in text.split()]
-    words = [w for w in words if w]
+    words = [w for w in (w.strip(".'-") for w in text.split()) if w]
     if not 2 <= len(words) <= 5:
         return None
     cleaned = normalize_text(" ".join(_title_case(w) for w in words))
-    if len(cleaned) < 3:
-        return None
-    return canonical_author(cleaned)
+    return canonical_author(cleaned) if len(cleaned) >= 3 else None
 
 
 def infer_name_from_alt(alt: str | None) -> str | None:
     text = normalize_text(alt)
     if not text:
         return None
-    for pattern in (
-        r"\bwith\s+([A-Za-z.'\- ]+)$",
-        r"\bstarring(?:\s+with)?\s+([A-Za-z.'\- ]+)$",
-        r"\bhosted by\s+([A-Za-z.'\- ]+)$",
-        r"\bfeaturing\s+([A-Za-z.'\- ]+)$",
-    ):
+    for pattern in NAME_IN_ALT_PATTERNS:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
             candidate = clean_candidate_name(match.group(1))
@@ -149,7 +146,7 @@ def extract_jokes(header_node) -> list[str]:
             break
         if node.name == "p":
             text = normalize_text(node.get_text(" ", strip=True))
-            if len(text) > 10:
+            if len(text) >= MIN_JOKE_CHARS:
                 jokes.append(text)
         node = node.find_next_sibling()
     return jokes
@@ -174,36 +171,69 @@ def parse_page(html: str) -> tuple[str | None, dict[str, list[str]]]:
     return date_value, by_host
 
 
-def discover_latest_page(session: requests.Session, *, timeout: float, retries: int) -> int:
-    response = get_with_retry(session, ARCHIVE_URL, timeout=timeout, retries=retries)
-    if response is None:
-        raise RuntimeError(f"Archive endpoint returned 404: {ARCHIVE_URL}")
-    for pattern, haystack in (
-        (r"/jokes/(\d+)/?$", response.url),
-        (
-            r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']https?://[^"\']*/jokes/(\d+)/?["\']',
-            response.text,
-        ),
-        (r"/jokes/(\d+)", response.text),
-    ):
-        match = re.search(pattern, haystack, flags=re.IGNORECASE)
-        if match:
-            return int(match.group(1))
-    raise RuntimeError("Unable to infer latest page id from archive page.")
+def crawl(
+    session: requests.Session,
+    store: DayStore,
+    *,
+    start_page: int,
+    end_page: int,
+    overwrite: bool = False,
+    stop_after_miss: int = 50,
+    stop_after_same_date: int = 20,
+    timeout: float = 20.0,
+    retries: int = 3,
+    sleep: float = 0.1,
+) -> CrawlSummary:
+    """Walk page numbers from start_page to end_page, writing one day file per page."""
+    if end_page < start_page:
+        raise ValueError("end_page must be >= start_page")
+
+    summary = CrawlSummary()
+    misses = 0
+    same_date_run = 0
+    previous_date: str | None = None
+
+    for page in range(start_page, end_page + 1):
+        date_value: str | None = None
+        by_host: dict[str, list[str]] = {}
+        try:
+            response = get(session, PAGE_URL.format(page=page), timeout=timeout, retries=retries)
+            if response is not None:
+                date_value, by_host = parse_page(response.text)
+        except requests.RequestException as exc:
+            log.warning("[error] page=%d reason=%s", page, exc)
+
+        if not date_value or not by_host:
+            summary["missing"] += 1
+            misses += 1
+            previous_date, same_date_run = None, 0
+            log.info("[missing] page=%d", page)
+            if misses >= stop_after_miss:
+                log.info("Stopping after %d consecutive misses.", misses)
+                break
+        else:
+            misses = 0
+            same_date_run = same_date_run + 1 if date_value == previous_date else 1
+            previous_date = date_value
+            log.debug("page=%d date=%s", page, date_value)
+            summary[store.save(date_value, by_host, overwrite=overwrite)] += 1
+            if same_date_run >= stop_after_same_date:
+                log.info("Stopping after %d consecutive pages dated %s.", same_date_run, date_value)
+                break
+
+        if sleep > 0:
+            time.sleep(sleep)
+    return summary
 
 
-def add_arguments(parser) -> None:
-    add_overwrite_args(parser)
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    add_crawl_args(parser, default_from=None)
     parser.add_argument("--start-page", type=int, default=DEFAULT_START_PAGE)
-    parser.add_argument("--end-page", type=int, default=None)
     parser.add_argument(
-        "--auto-end", action="store_true", help="Infer the latest page id from /jokes/archive/."
-    )
-    parser.add_argument(
-        "--fallback-window",
+        "--end-page",
         type=int,
-        default=DEFAULT_FALLBACK_WINDOW,
-        help="Pages to scan past --start-page when no end page is known.",
+        default=None,
+        help=f"Last page to fetch (default: --start-page + {DEFAULT_PAGE_WINDOW}).",
     )
     parser.add_argument(
         "--stop-after-miss", type=int, default=50, help="Stop after N consecutive empty pages."
@@ -212,77 +242,28 @@ def add_arguments(parser) -> None:
         "--stop-after-same-date",
         type=int,
         default=20,
-        help="Stop after N consecutive pages resolving to the same date (guards against redirects).",
+        help="Stop after N consecutive pages resolving to the same date (the end of the archive).",
     )
     parser.add_argument("--timeout", type=float, default=20)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--sleep", type=float, default=0.1, help="Seconds to wait between pages.")
-    parser.add_argument("--user-agent", default="", help="Optional User-Agent header.")
 
 
-def run(args) -> int:
-    output_dir = Path(args.data_dir) / SOURCE
-    skip_existing = not args.overwrite_existing
-
-    session = requests.Session()
-    if args.user_agent:
-        session.headers.update({"User-Agent": args.user_agent})
-
-    end_page = args.end_page
-    if end_page is None and args.auto_end:
-        try:
-            end_page = discover_latest_page(session, timeout=args.timeout, retries=args.retries)
-            print(f"Discovered latest page: {end_page}")
-        except Exception as exc:  # noqa: BLE001
-            print(f"[warn] auto-end discovery failed ({type(exc).__name__}: {exc})")
-    if end_page is None:
-        end_page = args.start_page + args.fallback_window
-        print(f"Scanning bounded window [{args.start_page}, {end_page}]")
+def run(args: argparse.Namespace) -> int:
+    end_page = args.end_page if args.end_page is not None else args.start_page + DEFAULT_PAGE_WINDOW
     if end_page < args.start_page:
         raise SystemExit("--end-page must be >= --start-page")
-
-    counts = {"saved": 0, "skipped": 0, "missing": 0}
-    misses = 0
-    same_date = 0
-    previous_date = None
-
-    for page in range(args.start_page, end_page + 1):
-        status, date_value, path = "missing", None, None
-        try:
-            response = get_with_retry(
-                session, BASE_URL.format(page=page), timeout=args.timeout, retries=args.retries
-            )
-            if response is not None:
-                date_value, by_host = parse_page(response.text)
-                if date_value and by_host:
-                    path = output_dir / f"{date_value}.csv"
-                    if skip_existing and path.exists():
-                        status = "skipped"
-                    else:
-                        write_day_csv(output_dir, date_value, by_host)
-                        status = "saved"
-        except Exception as exc:  # noqa: BLE001
-            print(f"[error] page={page} reason={exc}")
-
-        counts[status] += 1
-        if status == "missing":
-            misses += 1
-            previous_date, same_date = None, 0
-            print(f"[missing] page={page}")
-        else:
-            misses = 0
-            same_date = same_date + 1 if date_value == previous_date else 1
-            previous_date = date_value
-            print(f"[{status}] page={page} date={date_value} file={path}")
-
-        if misses >= args.stop_after_miss:
-            print(f"Stopping after {misses} consecutive misses.")
-            break
-        if same_date >= args.stop_after_same_date:
-            print(f"Stopping after {same_date} consecutive pages dated {date_value}.")
-            break
-        if args.sleep > 0:
-            time.sleep(args.sleep)
-
-    print("Summary:", " ".join(f"{k}={v}" for k, v in counts.items()))
+    summary = crawl(
+        make_session(args.user_agent or None),
+        DayStore(Path(args.data_dir) / SOURCE),
+        start_page=args.start_page,
+        end_page=end_page,
+        overwrite=args.overwrite_existing,
+        stop_after_miss=args.stop_after_miss,
+        stop_after_same_date=args.stop_after_same_date,
+        timeout=args.timeout,
+        retries=args.retries,
+        sleep=args.sleep,
+    )
+    log.info("Summary: %s", summary)
     return 0

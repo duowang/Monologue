@@ -6,29 +6,26 @@ section headings, or from the attribution that follows a quote.
 
 from __future__ import annotations
 
+import argparse
+import logging
 import re
 from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
 
-from monologue.common import (
-    add_date_window_args,
-    add_overwrite_args,
-    canonical_author,
-    fetch_wp_posts,
-    iso_date,
-    normalize_text,
-    parse_iso_date,
-    resolve_window,
-    write_day_csv,
-)
+from monologue.common import canonical_author, iso_date, normalize_text
+from monologue.crawl import CrawlSummary, DateWindow, DayCollector, DayStore, add_crawl_args, post_field
+from monologue.http import iter_wp_posts, make_session
+
+log = logging.getLogger(__name__)
 
 SOURCE = "latenighter"
 WP_POSTS_API = "https://latenighter.com/wp-json/wp/v2/posts"
 MONOLOGUES_TAG_ID = 180
 DEFAULT_FROM_DATE = "2018-09-29"
 UNKNOWN = "Unknown"
+MIN_QUOTE_CHARS = 20
 
 # Substrings (lower-case) that identify a host in a heading or attribution.
 HOST_ALIASES = {
@@ -45,6 +42,7 @@ HOST_ALIASES = {
 }
 
 QUOTE_RE = re.compile(r"[“\"](.{20,400}?)[”\"]")
+CLOSING_QUOTE_RE = re.compile(r'[”"]')
 
 
 def infer_host(text: str | None) -> str | None:
@@ -58,18 +56,27 @@ def infer_host(text: str | None) -> str | None:
 def infer_host_from_tail(text: str) -> str | None:
     """Look for a host name after the last closing quote, e.g. '"..." — Seth Meyers'."""
     tail = normalize_text(text)
-    closings = list(re.finditer(r'[”"]', tail))
+    closings = list(CLOSING_QUOTE_RE.finditer(tail))
     if closings:
         tail = tail[closings[-1].end() :]
     return infer_host(tail)
 
 
-def extract_inline_quotes(text: str) -> list[str]:
+def is_sentence_start(quote: str) -> bool:
+    """True when a quote begins like a sentence rather than mid-clause ("...were on his laptop")."""
+    first = quote.lstrip("‘'(")
+    return bool(first) and (first[0].isupper() or first[0].isdigit() or first[0] in "$#@")
+
+
+def extract_inline_quotes(text: str, *, sentences_only: bool = False) -> list[str]:
+    """Quoted spans of at least five words. With sentences_only, drop mid-sentence fragments."""
     seen: set[str] = set()
     quotes: list[str] = []
     for match in QUOTE_RE.findall(normalize_text(text)):
         quote = normalize_text(match)
         if len(quote.split()) < 5 or quote in seen:
+            continue
+        if sentences_only and not is_sentence_start(quote):
             continue
         seen.add(quote)
         quotes.append(quote)
@@ -95,55 +102,61 @@ def parse_post(content_html: str) -> dict[str, list[str]]:
             continue
         raw = normalize_text(node.get_text(" ", strip=True))
         quote = parse_quote_text(raw)
-        if len(quote) < 20:
+        if len(quote) < MIN_QUOTE_CHARS:
             continue
         host = infer_host_from_tail(raw) or current_host or infer_host(raw) or UNKNOWN
         quotes.setdefault(host, []).append(quote)
 
-    # Feature-style posts embed quotes inside paragraphs instead of blockquotes.
+    # Feature-style posts embed quotes inside prose paragraphs instead of blockquotes. The
+    # host named most recently in the prose owns the quotes that follow.
     if not quotes:
-        for node in soup.find_all(["p", "li"]):
+        current_host = None
+        for node in soup.find_all(["h2", "h3", "h4", "p", "li"]):
             text = normalize_text(node.get_text(" ", strip=True))
+            named = infer_host(text)
+            if named:
+                current_host = named
             if len(text) < 30:
                 continue
-            inline = extract_inline_quotes(text)
+            inline = extract_inline_quotes(text, sentences_only=True)
             if inline:
-                quotes.setdefault(infer_host(text) or UNKNOWN, []).extend(inline)
+                quotes.setdefault(named or current_host or UNKNOWN, []).extend(inline)
     return quotes
 
 
-def add_arguments(parser) -> None:
-    add_date_window_args(parser, DEFAULT_FROM_DATE)
-    add_overwrite_args(parser)
-
-
-def run(args) -> int:
-    output_dir = Path(args.data_dir) / SOURCE
-    skip_existing = not args.overwrite_existing
-    from_date, to_date = resolve_window(args)
-
-    session = requests.Session()
-    counts = {"saved": 0, "skipped": 0, "ignored": 0}
-
-    for post in fetch_wp_posts(session, WP_POSTS_API, MONOLOGUES_TAG_ID):
+def crawl(
+    session: requests.Session, store: DayStore, window: DateWindow, *, overwrite: bool = False
+) -> CrawlSummary:
+    """Fetch round-up posts inside `window`, merge them by day, and write day files."""
+    summary = CrawlSummary()
+    days = DayCollector()
+    for post in iter_wp_posts(
+        session, WP_POSTS_API, tag_id=MONOLOGUES_TAG_ID, after=window.start, before=window.end
+    ):
         date_value = iso_date(post["date"])
-        if not from_date <= parse_iso_date(date_value) <= to_date:
-            counts["ignored"] += 1
+        if not window.contains(date_value):
+            summary["ignored"] += 1
             continue
-        path = output_dir / f"{date_value}.csv"
-        if skip_existing and path.exists():
-            counts["skipped"] += 1
-            print(f"[skipped] date={date_value} file={path}")
-            continue
-        quotes = parse_post(post.get("content", {}).get("rendered", ""))
+        quotes = parse_post(post_field(post, "content", "rendered"))
         if not quotes:
-            counts["ignored"] += 1
-            print(f"[ignored] date={date_value} reason=no-quotes")
+            summary["ignored"] += 1
+            log.info("[ignored] date=%s reason=no-quotes link=%s", date_value, post.get("link", ""))
             continue
-        write_day_csv(output_dir, date_value, quotes)
-        counts["saved"] += 1
-        total = sum(len(v) for v in quotes.values())
-        print(f"[saved] date={date_value} hosts={len(quotes)} quotes={total} file={path}")
+        days.add(date_value, quotes)
+    summary.update(days.flush(store, overwrite=overwrite))
+    return summary
 
-    print("Summary:", " ".join(f"{k}={v}" for k, v in counts.items()))
+
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    add_crawl_args(parser, default_from=DEFAULT_FROM_DATE)
+
+
+def run(args: argparse.Namespace) -> int:
+    summary = crawl(
+        make_session(args.user_agent or None),
+        DayStore(Path(args.data_dir) / SOURCE),
+        DateWindow.from_args(args),
+        overwrite=args.overwrite_existing,
+    )
+    log.info("Summary: %s", summary)
     return 0

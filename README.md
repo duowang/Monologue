@@ -2,9 +2,13 @@
 
 **47,000+ late-night TV monologue jokes, 2009 to today, as plain CSV.**
 
-A small, hand-curated text dataset built from three public sources, plus the Python crawlers
-that keep it growing. Useful for humor research, NLP experiments, topic and sentiment analysis
-of political comedy, or just reading a decade of jokes.
+A hand-curated text dataset built from three public sources, plus the Python crawlers that
+keep it growing. Useful for humor research, NLP experiments, and topic or sentiment analysis
+of political comedy.
+
+The full text is kept in a private repository. This repo holds the code, the tooling, and a
+small public [sample](sample/) that documents the format and how far back and how fresh the
+data is. See [Getting the full dataset](#getting-the-full-dataset).
 
 [![CI](https://github.com/duowang/Monologue/actions/workflows/ci.yml/badge.svg)](https://github.com/duowang/Monologue/actions/workflows/ci.yml)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -42,32 +46,50 @@ latenighter  2024-02-27  Jimmy Fallon     Trump actually had two versions of his
 
 Regenerate these tables any time with `monologue stats`.
 
-### Layout
+### The public sample
 
 ```text
-data/
-  newsmax/       one CSV per broadcast day; 2009-2016 are grouped in year folders
-  latenighter/   one CSV per round-up post
-  scraps/        one CSV per transcript day
-  monologues.tsv everything flattened into one tab-separated file
+sample/
+  coverage.json          rows per source per month, no joke text
+  newsmax/               earliest and latest day: 2009-06-02, 2018-09-28
+  latenighter/           earliest and latest day: 2024-02-27, 2026-01-27
+  scraps/                earliest and latest day: 2017-06-26, 2025-11-17
 ```
 
-Every day file is named `YYYY-MM-DD.csv` and has the same two columns:
+The sample policy is simple and mechanical:
+
+- **Two day files per source**, the first and the last, each capped at 10 rows.
+- **A coverage file with no text**, so depth and continuity can be inspected or charted
+  without exposing any jokes.
+- **Regenerated after every crawl** with `monologue sample`, so the latest date in
+  `sample/` is always the freshness of the private corpus.
+
+### File format
+
+In both the sample and the full dataset, every day file is named `YYYY-MM-DD.csv` and has
+the same two columns:
 
 | Column | Meaning |
 |---|---|
 | `name` | Host or speaker, normalized to one spelling per person |
 | `monologue` | One joke or one transcript paragraph |
 
-The flattened file [`data/monologues.tsv`](data/monologues.tsv) adds `source` and `date` columns
-in front, so you can load the whole dataset with one call:
+The full dataset also ships a flattened `monologues.tsv` with `source` and `date` columns in
+front, so the whole corpus loads with one call:
 
 ```python
 import pandas as pd
 
-df = pd.read_csv("data/monologues.tsv", sep="\t")
+df = pd.read_csv("monologues.tsv", sep="\t")
 df.groupby("name").size().sort_values(ascending=False).head()
 ```
+
+### Getting the full dataset
+
+The complete text lives in a private repository, `duowang/Monologue-data`, with the same
+layout as `sample/` plus the flattened TSV. It is available on request for research and
+educational use; open an issue or get in touch. The joke text belongs to the shows and writers
+who created it, which is why it is not published here in full.
 
 ### Sources, and how they differ
 
@@ -90,11 +112,25 @@ This installs a `monologue` command. Add the `db` extra if you want the Postgres
 
 ## Usage
 
+Every command reads from `--data-dir`, which defaults to `$MONOLOGUE_DATA_DIR` or `./data`.
+Point it at a checkout of the private data repo:
+
+```bash
+export MONOLOGUE_DATA_DIR=../Monologue-data
+```
+
 ```bash
 monologue stats                              # Markdown tables like the ones above
 monologue stats --json                       # machine-readable, with per-source host counts
-monologue export -o data/monologues.tsv      # rebuild the flattened file
+monologue export -o "$MONOLOGUE_DATA_DIR/monologues.tsv"
 monologue export --format jsonl --source scraps -o scraps.jsonl
+monologue sample                             # refresh sample/ from the full dataset
+```
+
+The commands also work against `sample/` for a quick look at the tooling:
+
+```bash
+monologue --data-dir sample stats
 ```
 
 ### Updating the dataset
@@ -105,10 +141,12 @@ Each crawler skips days that already exist, so re-running is cheap and safe.
 monologue crawl latenighter --from-date 2024-01-01
 monologue crawl scraps --from-date 2017-01-01
 monologue crawl newsmax --start-page 1840 --auto-end --stop-after-same-date 8   # archive only; no new content since 2018
+monologue sample
 ```
 
 Pass `--overwrite-existing` to rebuild days after changing a parser, and
 `monologue crawl scraps --prune-stale` to delete day files a stricter filter no longer produces.
+After a crawl, commit the data repo and the refreshed `sample/` here.
 
 ### Loading into Postgres
 
@@ -128,9 +166,10 @@ ruff check . && ruff format --check .
 pytest
 ```
 
-The test suite covers the three parsers with small HTML fixtures, the export and stats
-commands, and an integrity pass over every committed CSV (date-named, standard header,
-non-empty). CI runs the same checks on Python 3.9 and 3.12.
+The test suite covers the three parsers with small HTML fixtures, the export, stats, and
+sample commands, and an integrity pass over `sample/` (date-named, standard header, non-empty,
+within the row cap). The same pass runs over the full dataset when `data/` is present.
+CI runs everything on Python 3.9 and 3.12.
 
 ```text
 monologue/
@@ -140,6 +179,7 @@ monologue/
   scraps.py       WordPress API crawler and transcript parser
   export.py       TSV / JSONL flattening
   stats.py        dataset summary
+  sample.py       public sample and coverage.json generator
   db.py           Postgres loader
   cli.py          argparse entry point
 ```
@@ -150,8 +190,9 @@ The code in this repository is released under the [MIT License](LICENSE).
 
 The joke text belongs to the shows and writers who created it and was collected from
 [Newsmax](https://www.newsmax.com/jokes/), [LateNighter](https://latenighter.com/), and
-[Scraps from the Loft](https://scrapsfromtheloft.com/). It is provided here for research and
-educational use. Please credit the original hosts and sources if you build on it.
+[Scraps from the Loft](https://scrapsfromtheloft.com/). Only a small sample is published
+here; the full dataset is shared privately for research and educational use. Please credit
+the original hosts and sources if you build on it.
 
 ## Citation
 

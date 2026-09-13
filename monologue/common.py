@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import os
 import re
 import time
 from collections.abc import Iterable, Iterator, Mapping
@@ -14,7 +15,14 @@ import requests
 
 CSV_FIELDS = ("name", "monologue")
 SOURCES = ("newsmax", "latenighter", "scraps")
+DATA_DIR_ENV = "MONOLOGUE_DATA_DIR"
 DEFAULT_DATA_DIR = Path("data")
+
+
+def default_data_dir() -> Path:
+    """The data directory: $MONOLOGUE_DATA_DIR if set, else ./data."""
+    return Path(os.environ.get(DATA_DIR_ENV) or DEFAULT_DATA_DIR)
+
 
 # Lower-cased spellings that appear in source pages, mapped to one canonical name.
 CANONICAL_AUTHORS: dict[str, str] = {

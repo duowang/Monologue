@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import argparse
 
-from monologue import __version__, db, export, latenighter, newsmax, scraps, stats
-from monologue.common import DEFAULT_DATA_DIR
+from monologue import __version__, db, export, latenighter, newsmax, sample, scraps, stats
+from monologue.common import DATA_DIR_ENV, default_data_dir
 
 CRAWLERS = {
     newsmax.SOURCE: (newsmax, "Newsmax 'Best of Late Nite Jokes' pages (2009-2018)."),
@@ -19,8 +19,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
         "--data-dir",
-        default=str(DEFAULT_DATA_DIR),
-        help="Directory holding one subfolder per source (default: ./data).",
+        default=str(default_data_dir()),
+        help=f"Directory holding one subfolder per source (default: ${DATA_DIR_ENV} or ./data).",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -34,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     for name, module, help_text in (
         ("export", export, "Flatten all CSVs into one TSV or JSONL file."),
         ("stats", stats, "Print dataset statistics."),
+        ("sample", sample, "Regenerate the public sample/ directory from the full dataset."),
         ("import-db", db, "Load the dataset into Postgres."),
     ):
         sub = commands.add_parser(name, help=help_text)

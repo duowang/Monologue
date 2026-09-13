@@ -14,7 +14,7 @@ SAMPLE_DIR = ROOT / "sample"
 DATA_DIR = ROOT / "data"
 
 
-def check_files(root: Path) -> None:
+def check_files(root: Path, *, require_all_sources: bool = True) -> None:
     problems = []
     seen = set()
     for source, path in iter_csv_files(root):
@@ -32,7 +32,10 @@ def check_files(root: Path) -> None:
         if not rows:
             problems.append(f"{path}: no rows")
     assert not problems, "\n".join(problems[:20])
-    assert seen == set(SOURCES)
+    if require_all_sources:
+        assert seen == set(SOURCES)
+    else:
+        assert seen, f"no source directories under {root}"
 
 
 def test_public_sample_is_valid_and_small():
@@ -45,4 +48,6 @@ def test_public_sample_is_valid_and_small():
 
 @pytest.mark.skipif(not DATA_DIR.is_dir(), reason="full dataset not present")
 def test_full_dataset_is_valid():
-    check_files(DATA_DIR)
+    # A local working copy may hold only some sources, so structure is checked but
+    # completeness is not; the committed sample is what must cover every source.
+    check_files(DATA_DIR, require_all_sources=False)

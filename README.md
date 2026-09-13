@@ -27,12 +27,13 @@ latenighter  2024-02-27  Jimmy Fallon     Trump actually had two versions of his
 | newsmax | 1,966 | 26,230 | 2009-06-02 | 2018-09-28 |
 | latenighter | 209 | 6,541 | 2024-02-27 | 2025-07-30 |
 | scraps | 184 | 14,608 | 2017-06-26 | 2026-03-02 |
-| **Total** | **2,359** | **47,379** | | |
+| youtube | 5 | 213 | 2026-08-20 | 2026-09-11 |
+| **Total** | **2,364** | **47,592** | | |
 
 | Host | Rows |
 |---|---:|
 | John Oliver | 13,099 |
-| Jimmy Fallon | 6,553 |
+| Jimmy Fallon | 6,766 |
 | Jimmy Kimmel | 5,471 |
 | Conan O'Brien | 4,712 |
 | Seth Meyers | 3,600 |
@@ -54,6 +55,7 @@ sample/
   newsmax/               earliest and latest day: 2009-06-02, 2018-09-28
   latenighter/           earliest and latest day: 2024-02-27, 2025-07-30
   scraps/                earliest and latest day: 2017-06-26, 2026-03-02
+  youtube/               earliest and latest day: 2026-08-20, 2026-09-11
 ```
 
 The sample policy is simple and mechanical:

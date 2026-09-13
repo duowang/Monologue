@@ -25,23 +25,23 @@ latenighter  2024-02-27  Jimmy Fallon     Trump actually had two versions of his
 | Source | Days | Rows | From | To |
 |---|---:|---:|---|---|
 | newsmax | 1,966 | 26,230 | 2009-06-02 | 2018-09-28 |
-| latenighter | 224 | 6,941 | 2024-02-27 | 2026-01-27 |
-| scraps | 181 | 13,995 | 2017-06-26 | 2025-11-17 |
-| **Total** | **2,371** | **47,166** | | |
+| latenighter | 225 | 6,843 | 2024-02-27 | 2026-02-26 |
+| scraps | 184 | 14,608 | 2017-06-26 | 2026-03-02 |
+| **Total** | **2,375** | **47,681** | | |
 
 | Host | Rows |
 |---|---:|
-| John Oliver | 12,287 |
-| Jimmy Fallon | 6,587 |
-| Jimmy Kimmel | 5,560 |
+| John Oliver | 13,099 |
+| Jimmy Fallon | 6,579 |
+| Jimmy Kimmel | 5,547 |
 | Conan O'Brien | 4,712 |
-| Seth Meyers | 3,665 |
+| Seth Meyers | 3,651 |
 | Jay Leno | 3,296 |
 | Craig Ferguson | 3,293 |
-| Stephen Colbert | 2,432 |
+| Stephen Colbert | 2,410 |
 | David Letterman | 1,385 |
 | James Corden | 1,020 |
-| Jon Stewart | 356 |
+| Jon Stewart | 345 |
 | Daily Show | 326 |
 
 Regenerate these tables any time with `monologue stats`.
@@ -52,8 +52,8 @@ Regenerate these tables any time with `monologue stats`.
 sample/
   coverage.json          rows per source per month, no joke text
   newsmax/               earliest and latest day: 2009-06-02, 2018-09-28
-  latenighter/           earliest and latest day: 2024-02-27, 2026-01-27
-  scraps/                earliest and latest day: 2017-06-26, 2025-11-17
+  latenighter/           earliest and latest day: 2024-02-27, 2026-02-26
+  scraps/                earliest and latest day: 2017-06-26, 2026-03-02
 ```
 
 The sample policy is simple and mechanical:

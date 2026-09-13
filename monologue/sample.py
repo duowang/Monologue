@@ -1,7 +1,7 @@
 """Build the public sample: first and last day per source (capped) plus a text-free coverage file.
 
-The full dataset lives in a private repository. This command regenerates the small,
-deterministic slice that is committed publicly to document the format and the date range.
+The full dataset is not published. This command regenerates the small, deterministic
+slice that is committed publicly to document the format and the date range.
 """
 
 from __future__ import annotations

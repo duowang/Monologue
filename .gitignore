@@ -19,5 +19,5 @@ venv/
 *.log
 .env
 
-# Full dataset lives in the private duowang/Monologue-data repo
+# Full dataset (not published)
 data/

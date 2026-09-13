@@ -6,9 +6,9 @@ A hand-curated text dataset built from three public sources, plus the Python cra
 keep it growing. Useful for humor research, NLP experiments, and topic or sentiment analysis
 of political comedy.
 
-The full text is kept in a private repository. This repo holds the code, the tooling, and a
-small public [sample](sample/) that documents the format and how far back and how fresh the
-data is. See [Getting the full dataset](#getting-the-full-dataset).
+This repo holds the code, the tooling, and a small public [sample](sample/) that documents
+the format and how far back and how fresh the data is. The full text is not published here;
+see [Getting the full dataset](#getting-the-full-dataset).
 
 [![CI](https://github.com/duowang/Monologue/actions/workflows/ci.yml/badge.svg)](https://github.com/duowang/Monologue/actions/workflows/ci.yml)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
@@ -62,7 +62,7 @@ The sample policy is simple and mechanical:
 - **A coverage file with no text**, so depth and continuity can be inspected or charted
   without exposing any jokes.
 - **Regenerated after every crawl** with `monologue sample`, so the latest date in
-  `sample/` is always the freshness of the private corpus.
+  `sample/` is always the freshness of the full dataset.
 
 ### File format
 
@@ -86,9 +86,8 @@ df.groupby("name").size().sort_values(ascending=False).head()
 
 ### Getting the full dataset
 
-The complete text lives in a private repository, `duowang/Monologue-data`, with the same
-layout as `sample/` plus the flattened TSV. It is available on request for research and
-educational use; open an issue or get in touch. The joke text belongs to the shows and writers
+The complete text has the same layout as `sample/` plus the flattened TSV. It is available
+for research and educational use: contact me. The joke text belongs to the shows and writers
 who created it, which is why it is not published here in full.
 
 ### Sources, and how they differ
@@ -113,10 +112,10 @@ This installs a `monologue` command. Add the `db` extra if you want the Postgres
 ## Usage
 
 Every command reads from `--data-dir`, which defaults to `$MONOLOGUE_DATA_DIR` or `./data`.
-Point it at a checkout of the private data repo:
+Point it at the directory holding the full dataset:
 
 ```bash
-export MONOLOGUE_DATA_DIR=../Monologue-data
+export MONOLOGUE_DATA_DIR=/path/to/full-dataset
 ```
 
 ```bash
@@ -146,7 +145,7 @@ monologue sample
 
 Pass `--overwrite-existing` to rebuild days after changing a parser, and
 `monologue crawl scraps --prune-stale` to delete day files a stricter filter no longer produces.
-After a crawl, commit the data repo and the refreshed `sample/` here.
+After a crawl, commit the refreshed `sample/` here.
 
 ### Loading into Postgres
 
@@ -191,7 +190,7 @@ The code in this repository is released under the [MIT License](LICENSE).
 The joke text belongs to the shows and writers who created it and was collected from
 [Newsmax](https://www.newsmax.com/jokes/), [LateNighter](https://latenighter.com/), and
 [Scraps from the Loft](https://scrapsfromtheloft.com/). Only a small sample is published
-here; the full dataset is shared privately for research and educational use. Please credit
+here; the full dataset is available for research and educational use on request. Please credit
 the original hosts and sources if you build on it.
 
 ## Citation

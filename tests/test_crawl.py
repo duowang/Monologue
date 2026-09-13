@@ -93,16 +93,32 @@ def test_iter_wp_posts_pages_and_filters_server_side():
 
 def test_latenighter_crawl_writes_merged_day_files(tmp_path: Path):
     html = (FIXTURES / "latenighter_post.html").read_text()
-    posts = [wp_post("2024-02-27", html), wp_post("2024-02-27", "<blockquote>tiny</blockquote>")]
+    posts = [
+        wp_post("2024-02-27", html, title="Monologues Round-Up"),
+        wp_post("2024-02-27", "<blockquote>tiny</blockquote>", title="Monologues Round-Up"),
+    ]
     summary = latenighter.crawl(FakeSession(lambda u, p: wp_posts(posts)), DayStore(tmp_path), WINDOW)
     assert summary == {"saved": 1, "ignored": 1}
     rows = read_day_csv(tmp_path / "2024-02-27.csv")
     assert {r["name"] for r in rows} == {"Jimmy Kimmel", "Stephen Colbert", "Desi Lydic"}
 
 
+def test_latenighter_crawl_ignores_news_articles_and_prunes(tmp_path: Path):
+    html = (FIXTURES / "latenighter_post.html").read_text()
+    posts = [
+        wp_post("2024-02-27", html, title="Monologues Round-Up: Tuesday"),
+        wp_post("2026-01-27", html, title="Colbert, Kimmel Call ‘Bullsh*t’ on Victim-Blaming"),
+    ]
+    store = DayStore(tmp_path)
+    store.save("2026-01-27", {"Jimmy Kimmel": ["from an earlier crawl of the news article"]})
+    summary = latenighter.crawl(FakeSession(lambda u, p: wp_posts(posts)), store, WINDOW, prune=True)
+    assert summary == {"saved": 1, "ignored": 1, "pruned": 1}
+    assert store.exists("2024-02-27") and not store.exists("2026-01-27")
+
+
 def test_latenighter_crawl_skips_existing(tmp_path: Path):
     html = (FIXTURES / "latenighter_post.html").read_text()
-    session = FakeSession(lambda u, p: wp_posts([wp_post("2024-02-27", html)]))
+    session = FakeSession(lambda u, p: wp_posts([wp_post("2024-02-27", html, title="Monologues Round-Up")]))
     assert latenighter.crawl(session, DayStore(tmp_path), WINDOW) == {"saved": 1}
     assert latenighter.crawl(session, DayStore(tmp_path), WINDOW) == {"skipped": 1}
     assert latenighter.crawl(session, DayStore(tmp_path), WINDOW, overwrite=True) == {"saved": 1}

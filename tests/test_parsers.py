@@ -116,5 +116,58 @@ def test_latenighter_prose_article_carries_host_context_and_drops_fragments():
     )
     assert latenighter.parse_post(html) == {
         "Jimmy Kimmel": ["Why are they being allowed to hide this stuff?"],
-        "Stephen Colbert": ["That the files are missing should be the biggest story in the world,"],
+        "Stephen Colbert": ["That the files are missing should be the biggest story in the world"],
     }
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Monologues Round-Up: Trump’s Big Week", True),
+        ("The Best Monologue Jokes From Tuesday", True),
+        ("Late Night Roundup for Friday", True),
+        ("Colbert, Kimmel Call &#8216;Bullsh*t&#8217; on Victim-Blaming", False),
+        ("Trump MSG Rally Prompts Outrage Across Late Night", False),
+    ],
+)
+def test_latenighter_is_roundup_post(title, expected):
+    assert latenighter.is_roundup_post(title) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # An attribution that ends a sentence joins the halves as two sentences.
+        (
+            "“Let’s cut the nonsense already,” Kimmel demanded. "
+            "“Because this? It may be Fox, but it isn’t news.”",
+            ["Let’s cut the nonsense already. Because this? It may be Fox, but it isn’t news."],
+        ),
+        # An attribution inside a sentence keeps the comma.
+        (
+            "“We don’t have to agree on everything,” he said, “but come on, admit it already.”",
+            ["We don’t have to agree on everything, but come on, admit it already."],
+        ),
+        # A trailing comma from the attribution is dropped.
+        (
+            "“The man was a nurse who treated veterans,” Kimmel said.",
+            ["The man was a nurse who treated veterans"],
+        ),
+        # Two separate quotes stay separate when the first does not end with a comma.
+        (
+            "“First joke is right here.” Then he added: “Second joke is over here.”",
+            ["First joke is right here.", "Second joke is over here."],
+        ),
+        # A mistyped opening mark and a long quote are still captured.
+        (
+            "He asserted, ‘”Masked people " + "shouting in the streets are not victims " * 12 + "at all.”",
+            None,
+        ),
+    ],
+)
+def test_latenighter_extract_inline_quotes(text, expected):
+    quotes = latenighter.extract_inline_quotes(text)
+    if expected is None:
+        assert len(quotes) == 1 and quotes[0].startswith("Masked people") and len(quotes[0]) > 400
+    else:
+        assert quotes == expected

@@ -95,7 +95,7 @@ who created it.
 | Source | What it is | Character |
 |---|---|---|
 | **newsmax** | Newsmax's daily "Best of Late Nite Jokes" column | Short, editor-selected one-liners. The column ended on 2018-09-28. |
-| **latenighter** | LateNighter's "Monologues Round-Up" posts | Short, editor-selected jokes. Attribution is inferred from headings and quote tails, so a few rows are `Unknown`. |
+| **latenighter** | LateNighter's "Monologues Round-Up" posts | Short, editor-selected jokes. The series ran from February 2024 to July 2025; news articles that share its tag are excluded. Attribution is inferred from headings and quote tails, so a few rows are `Unknown`. |
 | **scraps** | Full episode transcripts from Scraps from the Loft | Complete monologue and desk-segment transcripts, one paragraph per row. Much longer, and includes labeled speakers other than the host (announcers, guests, clips). |
 
 If you want only curated jokes, use `newsmax` and `latenighter`. If you want long-form text,
@@ -150,7 +150,7 @@ start repeating the final day.
 Useful flags:
 
 - `--overwrite-existing` rebuilds days after a parser change.
-- `monologue crawl scraps --prune-stale` deletes day files a stricter filter no longer produces.
+- `--prune-stale` on the latenighter and scraps crawlers deletes day files a stricter filter no longer produces.
 - `--user-agent` overrides the default `monologue-crawler/<version>` header.
 - `-v` before the command shows every fetch; `-q` shows only warnings.
 

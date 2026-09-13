@@ -192,14 +192,3 @@ The joke text belongs to the shows and writers who created it and was collected 
 [Scraps from the Loft](https://scrapsfromtheloft.com/). Only a small sample is published
 here; the full dataset is available for research and educational use on request. Please credit
 the original hosts and sources if you build on it.
-
-## Citation
-
-```bibtex
-@misc{wang_monologue,
-  author = {Duo Wang},
-  title  = {Monologue: a dataset of late-night TV monologue jokes},
-  year   = {2026},
-  url    = {https://github.com/duowang/Monologue}
-}
-```

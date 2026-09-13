@@ -5,13 +5,14 @@ from __future__ import annotations
 import argparse
 import logging
 
-from monologue import __version__, db, export, latenighter, newsmax, sample, scraps, stats
+from monologue import __version__, db, export, latenighter, newsmax, sample, scraps, stats, youtube
 from monologue.common import DATA_DIR_ENV, default_data_dir
 
 CRAWLERS = (
     (newsmax, "Newsmax 'Best of Late Nite Jokes' pages (2009-2018)."),
     (latenighter, "LateNighter 'Monologues Round-Up' posts (2024-2025)."),
     (scraps, "Full transcripts from scrapsfromtheloft.com (2017-)."),
+    (youtube, "Monologue captions from the shows' own YouTube channels (2026-)."),
 )
 COMMANDS = (
     ("export", export, "Flatten all CSVs into one TSV or JSONL file."),

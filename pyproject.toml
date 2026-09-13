@@ -23,6 +23,7 @@ dependencies = [
 
 [project.optional-dependencies]
 db = ["psycopg2-binary>=2.9,<3"]
+youtube = ["yt-dlp>=2025.1", "youtube-transcript-api>=1.0"]
 dev = ["pytest>=8", "ruff>=0.5"]
 
 [project.scripts]

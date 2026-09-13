@@ -97,9 +97,13 @@ who created it.
 | **newsmax** | Newsmax's daily "Best of Late Nite Jokes" column | Short, editor-selected one-liners. The column ended on 2018-09-28. |
 | **latenighter** | LateNighter's "Monologues Round-Up" posts | Short, editor-selected jokes. The series ran from February 2024 to July 2025; news articles that share its tag are excluded. Attribution is inferred from headings and quote tails, so a few rows are `Unknown`. |
 | **scraps** | Full episode transcripts from Scraps from the Loft | Complete monologue and desk-segment transcripts, one paragraph per row. Much longer, and includes labeled speakers other than the host (announcers, guests, clips). |
+| **youtube** | Caption text of monologues uploaded to the shows' own channels | The host's spoken words as the caption engine heard them, split at audience reactions. Same-night fresh, but unedited: filler words, occasional mistranscriptions, and the odd line from a sketch character. |
 
 If you want only curated jokes, use `newsmax` and `latenighter`. If you want long-form text,
-use `scraps`. The two kinds are not directly comparable in length or density.
+use `scraps` or `youtube`. The two kinds are not directly comparable in length or density.
+
+`newsmax` and `latenighter` are closed sets: both series have ended. `scraps` and `youtube`
+are the sources that still grow.
 
 ## Install
 
@@ -107,7 +111,19 @@ use `scraps`. The two kinds are not directly comparable in length or density.
 python -m pip install -e ".[dev]"
 ```
 
-This installs a `monologue` command. Add the `db` extra if you want the Postgres loader.
+This installs a `monologue` command. Add the `youtube` extra to crawl captions, or the `db`
+extra for the Postgres loader:
+
+```bash
+python -m pip install -e ".[dev,youtube]"
+```
+
+### A note on the YouTube source
+
+YouTube rate-limits caption requests per IP address. When it starts refusing them the crawler
+says so and stops, rather than recording an entire channel as having no captions. If that
+happens, wait and run it again, or run it from a different network. Keep `--sleep` generous
+and prefer a narrow `--from-date` over large backfills.
 
 ## Usage
 
@@ -137,8 +153,9 @@ monologue --data-dir sample stats
 Each crawler skips days that already exist, so re-running is cheap and safe.
 
 ```bash
-monologue crawl latenighter --from-date 2026-01-01
+monologue crawl youtube --from-date 2026-01-01
 monologue crawl scraps --from-date 2026-01-01
+monologue crawl latenighter --from-date 2024-01-01           # series ended 2025-07-30
 monologue crawl newsmax --start-page 1840 --end-page 2100    # archive only; nothing new since 2018
 monologue sample
 ```
@@ -152,6 +169,7 @@ Useful flags:
 - `--overwrite-existing` rebuilds days after a parser change.
 - `--prune-stale` on the latenighter and scraps crawlers deletes day files a stricter filter no longer produces.
 - `--user-agent` overrides the default `monologue-crawler/<version>` header.
+- `monologue crawl youtube --channel FallonTonight` restricts the run to one channel.
 - `-v` before the command shows every fetch; `-q` shows only warnings.
 
 After a crawl, commit the refreshed `sample/` here.
@@ -188,6 +206,7 @@ monologue/
   newsmax.py      page-number crawler and HTML parser
   latenighter.py  WordPress API crawler and round-up parser
   scraps.py       WordPress API crawler and transcript parser
+  youtube.py      channel crawler, monologue rules, caption segmenter
   export.py       TSV / JSONL flattening
   stats.py        dataset summary
   sample.py       public sample and coverage.json generator

@@ -11,7 +11,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 CSV_FIELDS = ("name", "monologue")
-SOURCES = ("newsmax", "latenighter", "scraps")
+SOURCES = ("newsmax", "latenighter", "scraps", "youtube")
 DATA_DIR_ENV = "MONOLOGUE_DATA_DIR"
 DEFAULT_DATA_DIR = Path("data")
 
